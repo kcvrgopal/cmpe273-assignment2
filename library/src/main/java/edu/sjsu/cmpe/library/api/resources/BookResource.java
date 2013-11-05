@@ -1,5 +1,12 @@
 package edu.sjsu.cmpe.library.api.resources;
 
+import javax.jms.Connection;
+import javax.jms.DeliveryMode;
+import javax.jms.Destination;
+import javax.jms.JMSException;
+import javax.jms.MessageProducer;
+import javax.jms.TextMessage;
+import javax.jms.Session;
 import javax.validation.Valid;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
@@ -14,9 +21,13 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
+import org.fusesource.stomp.jms.StompJmsConnectionFactory;
+import org.fusesource.stomp.jms.StompJmsDestination;
+
 import com.yammer.dropwizard.jersey.params.LongParam;
 import com.yammer.metrics.annotation.Timed;
 
+import edu.sjsu.cmpe.library.LibraryService;
 import edu.sjsu.cmpe.library.domain.Book;
 import edu.sjsu.cmpe.library.domain.Book.Status;
 import edu.sjsu.cmpe.library.dto.BookDto;
@@ -47,8 +58,7 @@ public class BookResource {
     public BookDto getBookByIsbn(@PathParam("isbn") LongParam isbn) {
 	Book book = bookRepository.getBookByISBN(isbn.get());
 	BookDto bookResponse = new BookDto(book);
-	bookResponse.addLink(new LinkDto("view-book", "/books/" + book.getIsbn(),
-		"GET"));
+	bookResponse.addLink(new LinkDto("view-book", "/books/" + book.getIsbn(),"GET"));
 	bookResponse.addLink(new LinkDto("update-book-status", "/books/"
 		+ book.getIsbn(), "PUT"));
 	// add more links
@@ -85,10 +95,31 @@ public class BookResource {
     @Path("/{isbn}")
     @Timed(name = "update-book-status")
     public Response updateBookStatus(@PathParam("isbn") LongParam isbn,
-	    @DefaultValue("available") @QueryParam("status") Status status) {
+	    @DefaultValue("available") @QueryParam("status") Status status) throws JMSException {
 	Book book = bookRepository.getBookByISBN(isbn.get());
 	book.setStatus(status);
-
+	if((book.getStatus().toString())=="lost")
+	 {
+		 //System.out.println("user"+LibraryService.user);
+		 //System.out.println("password"+LibraryService.password);
+		 //System.out.println("host"+ LibraryService.host);
+		 //System.out.println("port"+LibraryService.port);
+		 	StompJmsConnectionFactory factory = new StompJmsConnectionFactory();
+		 	factory.setBrokerURI("tcp://" + LibraryService.host + ":" + LibraryService.port);
+		 	Connection connection = factory.createConnection(LibraryService.user, LibraryService.password);
+			//System.out.println(connection);
+			connection.start();
+			Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+			Destination dest = new StompJmsDestination(LibraryService.destination);
+			MessageProducer producer = session.createProducer(dest);
+			producer.setDeliveryMode(DeliveryMode.NON_PERSISTENT);
+			//System.out.println("Sending messages to " + queue + "...");
+			String data = LibraryService.libraryFrom+":"+isbn;
+			TextMessage msg = session.createTextMessage(data);
+			msg.setLongProperty("id", System.currentTimeMillis());
+			producer.send(msg);
+			connection.close();
+			}
 	BookDto bookResponse = new BookDto(book);
 	String location = "/books/" + book.getIsbn();
 	bookResponse.addLink(new LinkDto("view-book", location, "GET"));
@@ -106,5 +137,13 @@ public class BookResource {
 
 	return bookResponse;
     }
+    private static String env(String key, String defaultValue) {
+    	String rc = System.getenv(key);
+    	if( rc== null ) {
+    	    return defaultValue;
+    	}
+    	return rc;
+        }
+
 }
 
