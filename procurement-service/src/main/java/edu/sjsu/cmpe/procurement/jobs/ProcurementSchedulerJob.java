@@ -42,7 +42,7 @@ public class ProcurementSchedulerJob extends Job {
 
 		try
 		{
-			long waitUntil = 500;
+			long waitUntil = 5000;
 			//Getting the order requests from Queue
 			while(true) 
 			{
