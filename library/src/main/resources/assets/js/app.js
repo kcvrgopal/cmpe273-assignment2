@@ -6,6 +6,8 @@ $(":button").click(function() {
     type: 'PUT',
     contentType: 'application/json',
     success: function(result) {
+        var btn = document.getElementById(isbn);
+    	btn.disabled = true;
         window.location.reload();
     }
     });
